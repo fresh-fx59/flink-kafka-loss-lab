@@ -7,6 +7,7 @@ import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
+import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -75,7 +76,7 @@ public class LossLabJob {
     }
 
     private static KafkaSource<Event> buildSource(String bootstrap, String topic) {
-        KafkaSource.KafkaSourceBuilder<Event> b = KafkaSource.<Event>builder()
+        KafkaSourceBuilder<Event> b = KafkaSource.<Event>builder()
                 .setBootstrapServers(bootstrap)
                 .setTopics(topic)
                 .setGroupId(env("GROUP_ID", "loss-lab"))

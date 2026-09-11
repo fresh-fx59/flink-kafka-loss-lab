@@ -145,7 +145,7 @@ services:
         rest.address: 0.0.0.0
         rest.bind-address: 0.0.0.0
     volumes:
-      - ./job/target:/opt/job:ro
+      - ./job:/opt/job:ro
       - lab-checkpoints:/checkpoints
 
   taskmanager:
@@ -163,7 +163,7 @@ services:
         taskmanager.memory.jvm-metaspace.size: 192m
         taskmanager.memory.managed.fraction: 0.1
     volumes:
-      - ./job/target:/opt/job:ro
+      - ./job:/opt/job:ro
       - lab-checkpoints:/checkpoints
 
   harness:

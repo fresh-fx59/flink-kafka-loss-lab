@@ -10,7 +10,7 @@ podman run --rm --cgroup-parent="$SLICE" \
   -v "$PWD/job:/src:z" \
   -v loss-lab-m2:/root/.m2 \
   -w /src maven:3.9-eclipse-temurin-17 \
-  mvn -B -q clean package
+  mvn -B -q clean package  # target/ is recreated; compose mounts ./job, not ./job/target
 ls -la "$PWD"/job/target/*.jar
 
 echo "== 2. build images + start the stack"

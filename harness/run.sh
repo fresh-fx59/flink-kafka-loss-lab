@@ -86,7 +86,7 @@ submit() {  # $1 = extra flink args (e.g. -s <checkpoint>)
   fi
   # shellcheck disable=SC2046
   $RUNNER exec $(job_env_args | tr '\n' ' ') -e "SINK_FAIL_WINDOW=$failwindow" \
-    lab-jobmanager flink run -d $extra /opt/job/loss-lab-job.jar \
+    lab-jobmanager flink run -d $extra /opt/job/target/loss-lab-job.jar \
     | tee "$RUN_DIR/submit$( [ -n "$extra" ] && echo "-restore" ).log"
 }
 

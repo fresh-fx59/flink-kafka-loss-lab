@@ -131,8 +131,25 @@ latest_checkpoint() {
 }
 
 # ------------------------------------------------------------------ run -------
+# Never submit into a cluster with no slots: the run would "complete" and report a
+# result that means nothing.
+require_taskmanager() {
+  for _ in $(seq 1 30); do
+    local tm
+    tm=$(curl -s --max-time 5 http://127.0.0.1:18081/overview \
+         | sed -n 's/.*"taskmanagers":\([0-9]*\).*/\1/p')
+    [ "${tm:-0}" -ge 1 ] && return 0
+    $RUNNER start lab-taskmanager >/dev/null 2>&1 || true
+    sleep 5
+  done
+  echo "ABORT: no TaskManager registered - the cluster has no slots" >&2
+  exit 5
+}
+
 say "$SCENARIO — $DESCRIPTION"
 echo "expect=$EXPECT startingOffsets=$STARTING_OFFSETS autoCommit=$ENABLE_AUTO_COMMIT checkpointMs=$CHECKPOINTING_MS sinkFailure=$SINK_FAILURE_MODE"
+
+require_taskmanager
 
 say "reset"
 GROUP_ID="$GROUP_ID" TOPIC1="$TOPIC1" TOPIC2="$TOPIC2" "$HERE/reset.sh" >"$RUN_DIR/reset.log" 2>&1

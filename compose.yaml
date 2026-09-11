@@ -132,6 +132,7 @@ services:
     image: loss-lab/flink:1.17.0-java17
     build: ./flink-image
     container_name: lab-jobmanager
+    restart: unless-stopped
     mem_limit: 620m
     ports: ["127.0.0.1:18081:8081"]
     command: jobmanager
@@ -152,6 +153,10 @@ services:
     image: loss-lab/flink:1.17.0-java17
     build: ./flink-image
     container_name: lab-taskmanager
+    # A TaskManager can die on a fatal internal error (seen: exit 239 after an induced
+    # sink failure). Without a restart policy the NEXT scenario submits into a cluster
+    # with zero slots and reports a bogus result.
+    restart: unless-stopped
     mem_limit: 1150m
     depends_on: [jobmanager]
     command: taskmanager

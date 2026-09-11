@@ -1,0 +1,90 @@
+# flink-kafka-loss-lab
+
+A reproduction lab for one question:
+
+> A Flink job stops for a few hours. Kafka keeps the events. When the job comes back,
+> **which single setting decides whether those hours are re-read and saved, or lost
+> forever?**
+
+Production shape being reproduced: Apache Flink **1.17.0 on Java 17**, Kafka in
+**ZooKeeper mode** (3 brokers for the source cluster, 2 for the router target), a
+stateless filter job, and a database sink. Checkpointing off. The lab runs the same
+outage every time — produce, run, **kill the job**, keep producing, restart — and then
+asks the database what survived.
+
+## What it measures
+
+For every destination table:
+
+```
+missing   = expected_ids - actual_ids     MUST be empty
+duplicate = ids seen more than once       reported
+extra     = actual_ids - expected_ids     MUST be empty
+```
+
+and the headline number:
+
+```
+events produced while the job was down   vs   how many of those are now in the database
+```
+
+**Row counts and Kafka consumer lag are not evidence** and the harness does not use
+them. The producer's own ledger, not Kafka, is the source of truth for what should
+have arrived.
+
+Each scenario carries a written **prediction**. A run where the observation disagrees
+with the prediction is the most valuable result the lab can produce, and is recorded
+as such.
+
+## Quick start
+
+```bash
+make build      # compile the Flink job (Maven runs in a container)
+make up         # bring up ZooKeeper, 5 Kafka brokers, Postgres, Flink JM+TM, harness
+make topics     # create the topics explicitly (auto-create is off on purpose)
+
+./harness/run.sh harness/scenarios/S06.env     # the recommended setup
+./harness/run.sh harness/scenarios/S03.env     # the control that loses data
+```
+
+Results land in `harness/out/<scenario>/verdict.json`, with the resolved per-partition
+starting offsets and the consumer-group state saved alongside.
+
+## Scenarios
+
+| # | What it sets up | Prediction |
+|---|---|---|
+| S01 | `committed-earliest`, no checkpoints, auto-commit left at its default | Nothing ever commits, so this degenerates into `earliest()` — full replay every restart |
+| S02 | + `enable.auto.commit=true`, 5 s interval | Resume near where the source stopped; outage re-read |
+| S03 | `latest()` | Outage skipped and lost — the control |
+| S04 | `committed-latest` with a rotating group id | Silent loss, indistinguishable from S03 in the logs |
+| S05 | Checkpoints on, restart **without** `-s` | Do checkpoint-committed offsets suffice on their own? |
+| S06 | Checkpoints on, restart **with** `-s` | Exact resume, zero loss — the recommendation |
+| S08 | Sink **swallows** its failure during catch-up | Offsets advance, rows never land, nothing turns red |
+| S09 | Same failure, but it **fails the task** | Flink replays, rows land — the one-line fix |
+| S10 | Sink acks **before** the commit | Silent loss with no error anywhere |
+| S11 | Bounded queue that **drops** instead of back-pressuring | Loss while the job reports healthy |
+| S14 | Replay with plain `INSERT` | Duplicates land |
+| S15 | Replay with a unique index + `ON CONFLICT DO NOTHING` | Exact row set after replay |
+
+Observed results: [`RESULTS.md`](RESULTS.md).
+
+## Why Flink 1.17.0 on Java 17 needs a custom image
+
+Docker Hub publishes **no `flink:1.17.*-java17`** image — the 1.17 line ships `-java8`
+and `-java11` only, and `java17` tags start at 1.18, where Java 17 support landed as
+*experimental*. `flink-image/` builds one on `eclipse-temurin:17` and injects the exact
+`--add-exports` / `--add-opens` list that Flink 1.18 ships as its default. Flink's docs
+are explicit that this list "must not be shortened, but only extended".
+
+Related: unaligned checkpoints are **disabled on purpose**. FLINK-31963 breaks
+unaligned-checkpoint rescaling on 1.17.0 (fixed in 1.17.1).
+
+## Footprint
+
+Ten containers, capped at **3.8 GiB** total, everything bound to `127.0.0.1`. Sized to
+run beside other workloads under a 4 GiB cgroup slice.
+
+## Licence
+
+MIT.

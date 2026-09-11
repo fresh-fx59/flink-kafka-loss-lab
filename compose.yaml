@@ -1,0 +1,177 @@
+# Flink/Kafka/Postgres loss lab.
+# Kafka runs in ZooKeeper mode (NOT KRaft), matching the operator's production.
+# Two logical Kafka clusters:
+#   kafka1 = 3 brokers, replication factor 3, min.insync.replicas 2  (source cluster)
+#   kafka2 = 2 brokers, replication factor 2, min.insync.replicas 1  (router target)
+# One ZooKeeper serves both, via separate chroots (/kafka1 and /kafka2), so the two
+# clusters stay independent without paying for a second ZK JVM. Memory budget below
+# totals 3.8 GiB, inside the 4 GiB cgroup cap on contabo.
+# Everything binds to 127.0.0.1 only.
+name: loss-lab
+
+x-kafka1-common: &kafka1-common
+  image: confluentinc/cp-kafka:7.6.1
+  depends_on: [zookeeper]
+  environment: &kafka1-env
+    KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181/kafka1
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    KAFKA_LOG_RETENTION_HOURS: 168
+    # S07 sets this to 1 to test committed-offset expiry while the group is empty.
+    KAFKA_OFFSETS_RETENTION_MINUTES: ${KAFKA1_OFFSETS_RETENTION_MINUTES:-10080}
+    KAFKA_HEAP_OPTS: -Xmx224m -Xms128m
+
+x-kafka2-common: &kafka2-common
+  image: confluentinc/cp-kafka:7.6.1
+  depends_on: [zookeeper]
+  environment: &kafka2-env
+    KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181/kafka2
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+    KAFKA_MIN_INSYNC_REPLICAS: 1
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    KAFKA_LOG_RETENTION_HOURS: 168
+    KAFKA_HEAP_OPTS: -Xmx224m -Xms128m
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: lab-zookeeper
+    mem_limit: 180m
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_HEAP_OPTS: -Xmx96m -Xms64m
+
+  kafka1-1:
+    <<: *kafka1-common
+    container_name: lab-kafka1-1
+    mem_limit: 380m
+    ports: ["127.0.0.1:19092:19092"]
+    environment:
+      <<: *kafka1-env
+      KAFKA_BROKER_ID: 11
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1-1:9092,EXTERNAL://127.0.0.1:19092
+
+  kafka1-2:
+    <<: *kafka1-common
+    container_name: lab-kafka1-2
+    mem_limit: 380m
+    ports: ["127.0.0.1:19093:19093"]
+    environment:
+      <<: *kafka1-env
+      KAFKA_BROKER_ID: 12
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1-2:9092,EXTERNAL://127.0.0.1:19093
+
+  kafka1-3:
+    <<: *kafka1-common
+    container_name: lab-kafka1-3
+    mem_limit: 380m
+    ports: ["127.0.0.1:19094:19094"]
+    environment:
+      <<: *kafka1-env
+      KAFKA_BROKER_ID: 13
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1-3:9092,EXTERNAL://127.0.0.1:19094
+
+  kafka2-1:
+    <<: *kafka2-common
+    container_name: lab-kafka2-1
+    mem_limit: 340m
+    ports: ["127.0.0.1:29092:29092"]
+    environment:
+      <<: *kafka2-env
+      KAFKA_BROKER_ID: 21
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2-1:9092,EXTERNAL://127.0.0.1:29092
+
+  kafka2-2:
+    <<: *kafka2-common
+    container_name: lab-kafka2-2
+    mem_limit: 340m
+    ports: ["127.0.0.1:29093:29093"]
+    environment:
+      <<: *kafka2-env
+      KAFKA_BROKER_ID: 22
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2-2:9092,EXTERNAL://127.0.0.1:29093
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: lab-postgres
+    mem_limit: 320m
+    ports: ["127.0.0.1:15432:5432"]
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: lab
+    # max_prepared_transactions > 0 is REQUIRED for the XA exactly-once sink (S16).
+    command: ["postgres", "-c", "max_prepared_transactions=64", "-c", "fsync=on"]
+    volumes:
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab -d lab"]
+      interval: 3s
+      retries: 20
+
+  jobmanager:
+    image: loss-lab/flink:1.17.0-java17
+    build: ./flink-image
+    container_name: lab-jobmanager
+    mem_limit: 450m
+    ports: ["127.0.0.1:18081:8081"]
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 400m
+        rest.address: 0.0.0.0
+        rest.bind-address: 0.0.0.0
+    volumes:
+      - ./job/target:/opt/job:ro
+      - lab-checkpoints:/checkpoints
+
+  taskmanager:
+    image: loss-lab/flink:1.17.0-java17
+    build: ./flink-image
+    container_name: lab-taskmanager
+    mem_limit: 850m
+    depends_on: [jobmanager]
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 768m
+    volumes:
+      - ./job/target:/opt/job:ro
+      - lab-checkpoints:/checkpoints
+
+  harness:
+    image: loss-lab/harness:1
+    build: ./harness
+    container_name: lab-harness
+    mem_limit: 200m
+    depends_on:
+      postgres: {condition: service_healthy}
+    working_dir: /work
+    volumes:
+      - ./:/work
+    entrypoint: ["sleep", "infinity"]
+
+volumes:
+  lab-checkpoints:

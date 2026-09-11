@@ -6,8 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.util.Properties;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -77,7 +77,19 @@ public class PgSink extends RichSinkFunction<Event> {
 
     @Override
     public void open(Configuration parameters) throws Exception {
-        conn = DriverManager.getConnection(jdbcUrl, user, password);
+        // NOT DriverManager.getConnection(). DriverManager lives on the system
+        // classloader; the Postgres driver arrives on Flink's child-first USER
+        // classloader. The first job submission happens to work, and every RESTART
+        // then fails with "No suitable driver found" - which looks exactly like a
+        // restart-only data bug and is not one. Instantiating the driver directly
+        // sidesteps DriverManager's registry entirely.
+        Properties props = new Properties();
+        props.setProperty("user", user);
+        props.setProperty("password", password);
+        conn = new org.postgresql.Driver().connect(jdbcUrl, props);
+        if (conn == null) {
+            throw new IllegalStateException("postgres driver refused the URL: " + jdbcUrl);
+        }
         conn.setAutoCommit(false);
         buffer = new ArrayList<>(batchSize);
         boundedQueue = new ArrayDeque<>(queueCapacity);

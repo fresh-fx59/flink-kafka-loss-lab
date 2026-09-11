@@ -31,6 +31,15 @@ if [ -n "${FLINK_PROPERTIES:-}" ]; then
   echo "${FLINK_PROPERTIES}" >> "$CONF"
 fi
 
+# The checkpoint volume is created root-owned, but Flink runs as `flink`. Without this
+# the JobManager dies at submit with "Failed to create directory for shared state",
+# which only affects the checkpointing scenarios - i.e. exactly the ones that are
+# supposed to prove the fix works.
+CHECKPOINT_ROOT="${CHECKPOINT_ROOT:-/checkpoints}"
+if [ -d "$CHECKPOINT_ROOT" ]; then
+  chown -R flink:flink "$CHECKPOINT_ROOT" || true
+fi
+
 case "${1:-help}" in
   jobmanager)
     {

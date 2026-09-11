@@ -1,0 +1,20 @@
+TRUNCATE TABLE
+
+Error: Deletion of some consumer groups failed:
+* Group 'loss-lab' could not be deleted due to: java.util.concurrent.ExecutionException: org.apache.kafka.common.errors.GroupIdNotFoundException: The group id does not exist.
+
+Error: Deletion of some consumer groups failed:
+* Group 'loss-lab' could not be deleted due to: java.util.concurrent.ExecutionException: org.apache.kafka.common.errors.GroupIdNotFoundException: The group id does not exist.
+Created topic events.
+Created topic events-routed.
+--- kafka1 ---
+Topic: events	TopicId: Iv_CTOdHQEeYHT9PC7D8aA	PartitionCount: 3	ReplicationFactor: 3	Configs: min.insync.replicas=2,message.timestamp.type=LogAppendTime
+	Topic: events	Partition: 0	Leader: 13	Replicas: 13,12,11	Isr: 13,12,11
+	Topic: events	Partition: 1	Leader: 12	Replicas: 12,11,13	Isr: 12,11,13
+	Topic: events	Partition: 2	Leader: 11	Replicas: 11,13,12	Isr: 11,13,12
+--- kafka2 ---
+Topic: events-routed	TopicId: FFcksyKwRcmuYqzDXb5LKA	PartitionCount: 3	ReplicationFactor: 2	Configs: min.insync.replicas=1,message.timestamp.type=LogAppendTime
+	Topic: events-routed	Partition: 0	Leader: 21	Replicas: 21,22	Isr: 21,22
+	Topic: events-routed	Partition: 1	Leader: 22	Replicas: 22,21	Isr: 22,21
+	Topic: events-routed	Partition: 2	Leader: 21	Replicas: 21,22	Isr: 21,22
+reset done

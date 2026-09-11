@@ -1,4 +1,5 @@
-harness/out/
+# harness/out/ is COMMITTED on purpose: the ledgers, logs and verdicts are the
+# evidence. A results table nobody can re-derive is an opinion.
 job/target/
 *.jar
 .env

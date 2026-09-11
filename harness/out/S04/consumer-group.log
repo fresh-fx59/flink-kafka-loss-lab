@@ -1,0 +1,7 @@
+
+Consumer group 'loss-lab-rotating' has no active members.
+
+GROUP             TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+loss-lab-rotating events          0          619             619             0               -               -               -
+loss-lab-rotating events          1          594             594             0               -               -               -
+loss-lab-rotating events          2          587             587             0               -               -               -

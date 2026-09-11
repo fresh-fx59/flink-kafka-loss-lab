@@ -1,0 +1,44 @@
+{
+  "scenario": "S06",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}

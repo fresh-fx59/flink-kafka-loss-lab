@@ -4,6 +4,16 @@ set -euo pipefail
 CONF="$FLINK_HOME/conf/flink-conf.yaml"
 JAVA17_OPTS="$(cat /opt/java17-opts.txt)"
 
+# The stock Flink 1.17 distribution binds its RPC to localhost:
+#   jobmanager.bind-host: localhost
+#   taskmanager.bind-host: localhost
+#   taskmanager.host: localhost
+#   rest.bind-address: localhost
+# That is correct for a laptop tarball and fatal in containers - the TaskManager gets
+# "Connection refused" to jobmanager:6123 forever. The official images strip these;
+# because this image is built from the tarball, we strip them here.
+sed -i -E 's/^[[:space:]]*(jobmanager\.bind-host|taskmanager\.bind-host|taskmanager\.host|rest\.bind-address):.*/# &/' "$CONF"
+
 # Flink 1.17 has no env.java.opts default; without these, Java 17 fails on JDK
 # module access. Written once, before any Flink process starts.
 if ! grep -q '^env.java.opts:' "$CONF"; then
@@ -23,9 +33,17 @@ fi
 
 case "${1:-help}" in
   jobmanager)
+    {
+      echo "jobmanager.bind-host: 0.0.0.0"
+      echo "rest.bind-address: 0.0.0.0"
+    } >> "$CONF"
     exec gosu flink "$FLINK_HOME/bin/jobmanager.sh" start-foreground
     ;;
   taskmanager)
+    {
+      echo "taskmanager.bind-host: 0.0.0.0"
+      echo "taskmanager.host: $(hostname)"
+    } >> "$CONF"
     exec gosu flink "$FLINK_HOME/bin/taskmanager.sh" start-foreground
     ;;
   help)

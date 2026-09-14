@@ -25,6 +25,11 @@ STARTING_OFFSETS=committed-earliest
 RESTART_STARTING_OFFSETS=""
 TS_TYPE=LogAppendTime
 OUTAGE_TIMESTAMP_SHIFT_MS=0
+# S07: shrink the broker's committed-offset retention so a short outage outlives it.
+# This is NOT a dynamic broker config, so the kafka1 brokers must be recreated.
+OFFSETS_RETENTION_MINUTES=""
+OUTAGE_SLEEP_SECONDS=0
+SINK_FAIL_TABLE=t_b
 GROUP_ID=loss-lab
 ENABLE_AUTO_COMMIT=false
 AUTO_COMMIT_INTERVAL_MS=5000
@@ -76,6 +81,7 @@ job_env_args() {
 -e SINK_MODE=$SINK_MODE
 -e SINK_FAILURE_MODE=$SINK_FAILURE_MODE
 -e WRITE_PROGRESS=$WRITE_PROGRESS
+-e SINK_FAIL_TABLE=$SINK_FAIL_TABLE
 -e KAFKA_SINK_GUARANTEE=$KAFKA_SINK_GUARANTEE
 -e PARALLELISM=$PARALLELISM
 -e TOPIC1=$TOPIC1
@@ -157,6 +163,14 @@ echo "expect=$EXPECT startingOffsets=$STARTING_OFFSETS autoCommit=$ENABLE_AUTO_C
 
 require_taskmanager
 
+if [ -n "$OFFSETS_RETENTION_MINUTES" ]; then
+  say "recreating the kafka1 brokers with offsets.retention.minutes=$OFFSETS_RETENTION_MINUTES"
+  ( cd "$ROOT" && KAFKA1_OFFSETS_RETENTION_MINUTES="$OFFSETS_RETENTION_MINUTES" \
+      nix run nixpkgs#podman-compose -- up -d --force-recreate \
+      kafka1-1 kafka1-2 kafka1-3 ) >"$RUN_DIR/broker-recreate.log" 2>&1
+  sleep 35
+fi
+
 say "reset"
 GROUP_ID="$GROUP_ID" TOPIC1="$TOPIC1" TOPIC2="$TOPIC2" TS_TYPE="$TS_TYPE" \
   "$HERE/reset.sh" >"$RUN_DIR/reset.log" 2>&1
@@ -195,6 +209,13 @@ harness_py harness/produce.py --bootstrap kafka1-1:9092 --topic "$TOPIC1" \
   --start-id $((BEFORE_COUNT + 1)) --count "$OUTAGE_COUNT" --rate "$RATE" \
   --timestamp-shift-ms "$OUTAGE_TIMESTAMP_SHIFT_MS" \
   --ledger "/work/harness/out/$SCENARIO/produced.jsonl" --phase during-outage
+
+if [ "$OUTAGE_SLEEP_SECONDS" -gt 0 ]; then
+  say "holding the outage open for ${OUTAGE_SLEEP_SECONDS}s (long enough for the committed offsets to expire)"
+  sleep "$OUTAGE_SLEEP_SECONDS"
+  $RUNNER exec lab-kafka1-1 kafka-consumer-groups --bootstrap-server kafka1-1:9092 \
+    --describe --group "$GROUP_ID" 2>&1 | tee "$RUN_DIR/group-after-expiry.log" || true
+fi
 
 say "phase 5 — restart the job"
 if [ -n "$RESTART_STARTING_OFFSETS" ]; then

@@ -17,6 +17,10 @@ SCENARIO_FILE="$1"
 SCENARIO="$(basename "$SCENARIO_FILE" .env)"
 
 KILL_JOB=router                # router | sink
+# cancel = graceful: Flink closes the sink, which FLUSHES the Kafka producer. That is
+# why DeliveryGuarantee.NONE can look safe. hard = SIGKILL the TaskManager, which is
+# what a real crash does and what NONE actually does not survive.
+KILL_MODE=cancel               # cancel | hard
 KAFKA_SINK_GUARANTEE=NONE
 ROUTER_CHECKPOINTING_MS=0
 SINK_CHECKPOINTING_MS=0
@@ -141,8 +145,15 @@ submit_router; sleep 8; submit_sink
 wait_rows_stable
 echo "rows after phase 2: t_a=$(pgexec 'SELECT count(*) FROM t_a') t_b=$(pgexec 'SELECT count(*) FROM t_b')"
 
-say "phase 3 — KILL the $KILL_JOB job"
-if [ "$KILL_JOB" = "router" ]; then cancel_named "loss-lab-router"; else cancel_named "loss-lab-sink"; fi
+say "phase 3 — KILL the $KILL_JOB job (mode: $KILL_MODE)"
+if [ "$KILL_MODE" = "hard" ]; then
+  $RUNNER kill -s KILL lab-taskmanager >/dev/null 2>&1 || true
+  sleep 5
+  $RUNNER start lab-taskmanager >/dev/null 2>&1 || true
+  require_taskmanager
+  cancel_named "loss-lab-router"; cancel_named "loss-lab-sink"
+elif [ "$KILL_JOB" = "router" ]; then cancel_named "loss-lab-router"
+else cancel_named "loss-lab-sink"; fi
 $RUNNER exec lab-jobmanager flink list -r 2>&1 | tail -3
 
 say "phase 4 — produce $OUTAGE_COUNT events into kafka1 while it is down"
@@ -151,7 +162,9 @@ harness_py harness/produce.py --bootstrap kafka1-1:9092 --topic "$TOPIC1" \
   --ledger "/work/harness/out/$SCENARIO/produced.jsonl" --phase during-outage
 
 say "phase 5 — restart the $KILL_JOB job"
-if [ "$KILL_JOB" = "router" ]; then submit_router; else submit_sink; fi
+if [ "$KILL_MODE" = "hard" ]; then submit_router; sleep 8; submit_sink
+elif [ "$KILL_JOB" = "router" ]; then submit_router
+else submit_sink; fi
 wait_rows_stable
 
 say "phase 6 — produce $AFTER_COUNT more"

@@ -19,6 +19,12 @@ SCENARIO="$(basename "$SCENARIO_FILE" .env)"
 # ---- defaults, overridden by the scenario file -------------------------------
 SHAPE=direct
 STARTING_OFFSETS=committed-earliest
+# Some scenarios restart with a DIFFERENT startup mode than they started with - that is
+# what a real recovery looks like. The literal OUTAGE_START is substituted with the
+# wall-clock millisecond at which the job was killed.
+RESTART_STARTING_OFFSETS=""
+TS_TYPE=LogAppendTime
+OUTAGE_TIMESTAMP_SHIFT_MS=0
 GROUP_ID=loss-lab
 ENABLE_AUTO_COMMIT=false
 AUTO_COMMIT_INTERVAL_MS=5000
@@ -62,7 +68,7 @@ job_env_args() {
   cat <<EOF
 -e SCENARIO=$SCENARIO
 -e SHAPE=$SHAPE
--e STARTING_OFFSETS=$STARTING_OFFSETS
+-e STARTING_OFFSETS=${EFFECTIVE_STARTING_OFFSETS:-$STARTING_OFFSETS}
 -e GROUP_ID=$GROUP_ID
 -e ENABLE_AUTO_COMMIT=$ENABLE_AUTO_COMMIT
 -e AUTO_COMMIT_INTERVAL_MS=$AUTO_COMMIT_INTERVAL_MS
@@ -152,7 +158,8 @@ echo "expect=$EXPECT startingOffsets=$STARTING_OFFSETS autoCommit=$ENABLE_AUTO_C
 require_taskmanager
 
 say "reset"
-GROUP_ID="$GROUP_ID" TOPIC1="$TOPIC1" TOPIC2="$TOPIC2" "$HERE/reset.sh" >"$RUN_DIR/reset.log" 2>&1
+GROUP_ID="$GROUP_ID" TOPIC1="$TOPIC1" TOPIC2="$TOPIC2" TS_TYPE="$TS_TYPE" \
+  "$HERE/reset.sh" >"$RUN_DIR/reset.log" 2>&1
 
 if [ "$PK_ON_EVENT_ID" = "true" ]; then
   for t in ${TABLES//,/ }; do
@@ -178,15 +185,22 @@ wait_for_rows_stable
 echo "rows after phase 2: t_a=$(pgexec 'SELECT count(*) FROM t_a') t_b=$(pgexec 'SELECT count(*) FROM t_b')"
 
 say "phase 3 — KILL the job (this is the outage)"
+OUTAGE_START_MS=$(( $(date +%s) * 1000 ))
+echo "outage starts at epoch ms $OUTAGE_START_MS"
 cancel_job
 echo "job list after cancel: $($RUNNER exec lab-jobmanager flink list -r 2>&1 | tail -2)"
 
 say "phase 4 — produce $OUTAGE_COUNT events WHILE THE JOB IS DOWN"
 harness_py harness/produce.py --bootstrap kafka1-1:9092 --topic "$TOPIC1" \
   --start-id $((BEFORE_COUNT + 1)) --count "$OUTAGE_COUNT" --rate "$RATE" \
+  --timestamp-shift-ms "$OUTAGE_TIMESTAMP_SHIFT_MS" \
   --ledger "/work/harness/out/$SCENARIO/produced.jsonl" --phase during-outage
 
 say "phase 5 — restart the job"
+if [ -n "$RESTART_STARTING_OFFSETS" ]; then
+  EFFECTIVE_STARTING_OFFSETS="${RESTART_STARTING_OFFSETS/OUTAGE_START/$OUTAGE_START_MS}"
+  echo "restart startup mode: $EFFECTIVE_STARTING_OFFSETS"
+fi
 RESTORE_ARG=""
 if [ "$RESTART_FROM_CHECKPOINT" = "true" ]; then
   CP="$(latest_checkpoint)"

@@ -32,6 +32,11 @@ def main() -> int:
     p.add_argument("--ledger", required=True)
     p.add_argument("--phase", required=True,
                    help="before-outage | during-outage | after-restart")
+    p.add_argument("--timestamp-shift-ms", type=int, default=0,
+                   help="shift the RECORD timestamp by this many ms (negative = "
+                        "back-date). Only has an effect on a topic with "
+                        "message.timestamp.type=CreateTime, where the producer's "
+                        "clock is what lands in the log and in the time index.")
     args = p.parse_args()
 
     os.makedirs(os.path.dirname(args.ledger), exist_ok=True)
@@ -52,10 +57,15 @@ def main() -> int:
             route = route_for(eid)
             value = f"{eid}\t{now_ms}\t{route}\tpayload-{eid}"
             # Key by event_id so a given id always lands on the same partition.
-            producer.send(args.topic, key=str(eid).encode("utf-8"), value=value)
+            # timestamp_ms is the RECORD timestamp; under CreateTime it is what the
+            # time index is built from, so back-dating it is exactly the producer-skew
+            # case that makes offsetsForTimes answer wrongly.
+            producer.send(args.topic, key=str(eid).encode("utf-8"), value=value,
+                          timestamp_ms=now_ms + args.timestamp_shift_ms)
             fh.write(json.dumps({
                 "event_id": eid, "produced_at": now_ms,
                 "route": route, "phase": args.phase,
+                "record_ts": now_ms + args.timestamp_shift_ms,
             }) + "\n")
             written += 1
             if interval:

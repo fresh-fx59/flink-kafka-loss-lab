@@ -158,17 +158,40 @@ require_taskmanager() {
   exit 5
 }
 
+# A TaskManager that has hosted several jobs accumulates one child-first classloader
+# per submission (the JDBC driver keeps them alive), and eventually dies mid-scenario
+# with "The TaskExecutor is shutting down" - which silently invalidates whatever
+# scenario was running. Start every scenario on a fresh TaskManager JVM instead of
+# discovering the problem afterwards.
+recycle_taskmanager() {
+  $RUNNER restart lab-taskmanager >/dev/null 2>&1 || true
+  require_taskmanager
+}
+
+# Wait for ALL kafka1 brokers to re-register, not a fixed sleep: topic creation with
+# replication-factor 3 fails outright if only 2 have come back.
+wait_for_kafka1_brokers() {
+  for _ in $(seq 1 60); do
+    local n
+    n=$($RUNNER exec lab-zookeeper zookeeper-shell localhost:2181 ls /kafka1/brokers/ids 2>/dev/null \
+        | tr -d ' ' | grep -oE '\[[0-9,]*\]' | tail -1 | tr ',' '\n' | grep -cE '[0-9]+' || echo 0)
+    [ "${n:-0}" -ge 3 ] && { echo "kafka1 brokers registered: $n"; return 0; }
+    sleep 5
+  done
+  echo "ABORT: kafka1 brokers did not all re-register" >&2; exit 6
+}
+
 say "$SCENARIO — $DESCRIPTION"
 echo "expect=$EXPECT startingOffsets=$STARTING_OFFSETS autoCommit=$ENABLE_AUTO_COMMIT checkpointMs=$CHECKPOINTING_MS sinkFailure=$SINK_FAILURE_MODE"
 
-require_taskmanager
+recycle_taskmanager
 
 if [ -n "$OFFSETS_RETENTION_MINUTES" ]; then
   say "recreating the kafka1 brokers with offsets.retention.minutes=$OFFSETS_RETENTION_MINUTES"
   ( cd "$ROOT" && KAFKA1_OFFSETS_RETENTION_MINUTES="$OFFSETS_RETENTION_MINUTES" \
       nix run nixpkgs#podman-compose -- up -d --force-recreate \
       kafka1-1 kafka1-2 kafka1-3 ) >"$RUN_DIR/broker-recreate.log" 2>&1
-  sleep 35
+  wait_for_kafka1_brokers
 fi
 
 say "reset"

@@ -118,9 +118,19 @@ wait_rows_stable() {
   done
 }
 
+# A TaskManager that has hosted several jobs accumulates one child-first classloader
+# per submission (the JDBC driver keeps them alive), and eventually dies mid-scenario
+# with "The TaskExecutor is shutting down" - which silently invalidates whatever
+# scenario was running. Start every scenario on a fresh TaskManager JVM instead of
+# discovering the problem afterwards.
+recycle_taskmanager() {
+  $RUNNER restart lab-taskmanager >/dev/null 2>&1 || true
+  require_taskmanager
+}
+
 say "$SCENARIO — $DESCRIPTION"
 echo "kill=$KILL_JOB routerGuarantee=$KAFKA_SINK_GUARANTEE routerCheckpointMs=$ROUTER_CHECKPOINTING_MS sinkCheckpointMs=$SINK_CHECKPOINTING_MS expect=$EXPECT"
-require_taskmanager
+recycle_taskmanager
 
 say "reset"
 GROUP_ID="${SCENARIO}-router" TOPIC1="$TOPIC1" TOPIC2="$TOPIC2" TS_TYPE="$TS_TYPE" \

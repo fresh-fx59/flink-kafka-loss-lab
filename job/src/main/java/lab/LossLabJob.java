@@ -51,6 +51,22 @@ public class LossLabJob {
      * exercises every one of them.
      */
     private static OffsetsInitializer startingOffsets(String spec) {
+        if (spec.startsWith("pg-max:")) {
+            // Resume from MAX(src_offset) in one table. Deliberately the wrong design -
+            // a maximum is not a completed prefix. S12 exists to show it losing data.
+            return new PgOffsetsInitializer(
+                    env("PG_URL", "jdbc:postgresql://postgres:5432/lab"),
+                    env("PG_USER", "lab"), env("PG_PASSWORD", "lab"),
+                    PgOffsetsInitializer.Mode.MAX_OFFSET,
+                    spec.substring("pg-max:".length()), env("JOB_NAME", "loss-lab"));
+        }
+        if (spec.equals("pg-frontier")) {
+            // Resume from MIN over every branch's acknowledged progress. S13.
+            return new PgOffsetsInitializer(
+                    env("PG_URL", "jdbc:postgresql://postgres:5432/lab"),
+                    env("PG_USER", "lab"), env("PG_PASSWORD", "lab"),
+                    PgOffsetsInitializer.Mode.FRONTIER, null, env("JOB_NAME", "loss-lab"));
+        }
         if (spec.startsWith("timestamp:")) {
             long ts = Long.parseLong(spec.substring("timestamp:".length()));
             // NOTE: Flink 1.17's TimestampOffsetsInitializer falls back to the
@@ -197,7 +213,8 @@ public class LossLabJob {
                     mode, from, to,
                     Integer.parseInt(env("SINK_QUEUE_CAPACITY", "50")),
                     envBool("WRITE_PROGRESS", false),
-                    env("JOB_NAME", "loss-lab"));
+                    env("JOB_NAME", "loss-lab"),
+                    env("SINK_FAIL_TABLE", "t_b"));
             stream.addSink(sink).name("pg-sink-" + mode);
             LOG.info("{} shape -> Postgres, sinkMode={} failureMode={} window={} (now={})",
                     shape, env("SINK_MODE", "plain-insert"), mode, window, now);

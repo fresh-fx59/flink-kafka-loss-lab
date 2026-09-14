@@ -36,7 +36,11 @@ public class PgSink extends RichSinkFunction<Event> {
     private static final long serialVersionUID = 1L;
     private static final Logger LOG = LoggerFactory.getLogger(PgSink.class);
 
-    public enum FailureMode { NONE, SWALLOW, FAIL_TASK, DROP_ON_FULL, ACK_BEFORE_COMMIT }
+    public enum FailureMode {
+        NONE, SWALLOW, FAIL_TASK, DROP_ON_FULL, ACK_BEFORE_COMMIT,
+        /** Silently starve ONE table so the branches diverge - the fan-out case. */
+        FAIL_ONE_TABLE
+    }
 
     private final String jdbcUrl;
     private final String user;
@@ -50,6 +54,7 @@ public class PgSink extends RichSinkFunction<Event> {
     private final boolean writeProgress;
     private final String jobName;
     private final long flushIntervalMs = 1000L;
+    private String failTable = "";
 
     private transient Connection conn;
     private transient List<Event> buffer;
@@ -61,7 +66,9 @@ public class PgSink extends RichSinkFunction<Event> {
     public PgSink(String jdbcUrl, String user, String password,
                   boolean onConflictIgnore, int batchSize,
                   FailureMode failureMode, long failFromMs, long failToMs,
-                  int queueCapacity, boolean writeProgress, String jobName) {
+                  int queueCapacity, boolean writeProgress, String jobName,
+                  String failTable) {
+        this.failTable = failTable == null ? "" : failTable;
         this.jdbcUrl = jdbcUrl;
         this.user = user;
         this.password = password;
@@ -169,6 +176,12 @@ public class PgSink extends RichSinkFunction<Event> {
         for (Event e : batch) {
             String table = e.targetTable();
             if (table == null) continue;
+            if (failureMode == FailureMode.FAIL_ONE_TABLE
+                    && table.equals(failTable) && inFailureWindow()) {
+                // This branch alone gets nothing, so the tables diverge. Its progress
+                // row is skipped too, which is what makes MIN() and MAX() disagree.
+                continue;
+            }
             String sql = "INSERT INTO " + table
                     + " (event_id, produced_at, route, src_topic, src_part, src_offset)"
                     + " VALUES (?,?,?,?,?,?)"
@@ -196,6 +209,10 @@ public class PgSink extends RichSinkFunction<Event> {
             for (Event e : batch) {
                 String table = e.targetTable();
                 if (table == null) continue;
+                if (failureMode == FailureMode.FAIL_ONE_TABLE
+                        && table.equals(failTable) && inFailureWindow()) {
+                    continue;
+                }
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setString(1, jobName);
                     ps.setString(2, e.srcTopic);

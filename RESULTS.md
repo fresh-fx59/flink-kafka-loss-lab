@@ -26,6 +26,8 @@ a lab that cannot reproduce the bug proves nothing about the fix.
 | S11 | 900 | **900** | 0 | 100 | 0 | loss | PASS |
 | S14 | 900 | **900** | 0 | 0 | 600 | no-loss | PASS |
 | S15 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S21 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S22 | 900 | **0** | 900 | 900 | 0 | loss | PASS |
 
 ---
 
@@ -1759,6 +1761,286 @@ Error: Consumer group 'loss-lab' does not exist.
     "produced": 900,
     "saved": 900,
     "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S21
+
+timestamp recovery done right: LogAppendTime topic, restart from OffsetsInitializer.timestamp(outage start) - replay exactly the gap
+
+### Case definition (`harness/scenarios/S21.env`, verbatim)
+
+```ini
+DESCRIPTION="timestamp recovery done right: LogAppendTime topic, restart from OffsetsInitializer.timestamp(outage start) - replay exactly the gap"
+STARTING_OFFSETS=committed-earliest
+RESTART_STARTING_OFFSETS=timestamp:OUTAGE_START
+ENABLE_AUTO_COMMIT=true
+CHECKPOINTING_MS=0
+TS_TYPE=LogAppendTime
+SINK_MODE=on-conflict-ignore
+PK_ON_EVENT_ID=true
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-11 13:49:51,438 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:49:51,452 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,984 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,988 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,538 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,539 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:15:57,928 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:15:57,928 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:16:54,582 I
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+Consumer group 'loss-lab' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+loss-lab        events          0          619             619             0               -               -               -
+loss-lab        events          1          594             594             0               -               -               -
+loss-lab        events          2          587             587             0               -               -               -
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S21",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S22
+
+the Flink 1.17 timestamp trap: CreateTime topic whose outage records are back-dated 24h, restart from timestamp(outage start) -> the lookup finds nothing at/after the target and TimestampOffsetsInitializer falls back to the partition END offset, silently skipping the backlog
+
+### Case definition (`harness/scenarios/S22.env`, verbatim)
+
+```ini
+DESCRIPTION="the Flink 1.17 timestamp trap: CreateTime topic whose outage records are back-dated 24h, restart from timestamp(outage start) -> the lookup finds nothing at/after the target and TimestampOffsetsInitializer falls back to the partition END offset, silently skipping the backlog"
+STARTING_OFFSETS=committed-earliest
+RESTART_STARTING_OFFSETS=timestamp:OUTAGE_START
+ENABLE_AUTO_COMMIT=true
+CHECKPOINTING_MS=0
+TS_TYPE=CreateTime
+OUTAGE_TIMESTAMP_SHIFT_MS=-86400000
+EXPECT=loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-11 13:49:51,438 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:49:51,452 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,984 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,988 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,538 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,539 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:15:57,928 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:15:57,928 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:16:54,582 I
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+Consumer group 'loss-lab' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+loss-lab        events          0          619             619             0               -               -               -
+loss-lab        events          1          594             594             0               -               -               -
+loss-lab        events          2          587             587             0               -               -               -
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 449 | 449 | 448 | 0 | 0 |
+| `t_b` | 900 | 450 | 450 | 450 | 0 | 0 |
+| `t_rare` | 3 | 1 | 1 | 2 | 0 | 0 |
+
+**Outage window: 900 produced, 0 saved, 900 lost.**
+
+First missing event ids — `t_a`: [602, 604, 606, 608, 610, 612, 614, 616, 618, 620]; `t_b`: [601, 603, 605, 607, 609, 611, 613, 615, 617, 619]; `t_rare`: [1000, 1500]
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S22",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 449,
+      "rows": 449,
+      "missing_count": 448,
+      "missing_sample": [
+        602,
+        604,
+        606,
+        608,
+        610,
+        612,
+        614,
+        616,
+        618,
+        620,
+        622,
+        624,
+        626,
+        628,
+        630,
+        632,
+        634,
+        636,
+        638,
+        640
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 450,
+      "rows": 450,
+      "missing_count": 450,
+      "missing_sample": [
+        601,
+        603,
+        605,
+        607,
+        609,
+        611,
+        613,
+        615,
+        617,
+        619,
+        621,
+        623,
+        625,
+        627,
+        629,
+        631,
+        633,
+        635,
+        637,
+        639
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 1,
+      "rows": 1,
+      "missing_count": 2,
+      "missing_sample": [
+        1000,
+        1500
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 0,
+    "lost": 900
   },
   "pass": true
 }

@@ -1,0 +1,89 @@
+{
+  "scenario": "S22",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 449,
+      "rows": 449,
+      "missing_count": 448,
+      "missing_sample": [
+        602,
+        604,
+        606,
+        608,
+        610,
+        612,
+        614,
+        616,
+        618,
+        620,
+        622,
+        624,
+        626,
+        628,
+        630,
+        632,
+        634,
+        636,
+        638,
+        640
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 450,
+      "rows": 450,
+      "missing_count": 450,
+      "missing_sample": [
+        601,
+        603,
+        605,
+        607,
+        609,
+        611,
+        613,
+        615,
+        617,
+        619,
+        621,
+        623,
+        625,
+        627,
+        629,
+        631,
+        633,
+        635,
+        637,
+        639
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 1,
+      "rows": 1,
+      "missing_count": 2,
+      "missing_sample": [
+        1000,
+        1500
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 0,
+    "lost": 900
+  },
+  "pass": true
+}

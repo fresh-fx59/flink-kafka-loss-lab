@@ -16,6 +16,7 @@ a lab that cannot reproduce the bug proves nothing about the fix.
 |---|---|---|---|---|---|---|---|
 | S01 | 900 | **900** | 0 | 0 | 600 | no-loss | PASS |
 | S02 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S02L | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
 | S03 | 900 | **0** | 900 | 1500 | 0 | loss | PASS |
 | S04 | 900 | **900** | 0 | 600 | 0 | loss | PASS |
 | S05 | 900 | **900** | 0 | 0 | 398 | no-loss | PASS |
@@ -243,6 +244,119 @@ loss-lab        events          2          587             587             0    
 ```json
 {
   "scenario": "S02",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S02L
+
+S02 with a LONG outage (3 minutes, far longer than the 5s commit interval) - does the commit interval bound what a restart can recover?
+
+### Case definition (`harness/scenarios/S02L.env`, verbatim)
+
+```ini
+DESCRIPTION="S02 with a LONG outage (3 minutes, far longer than the 5s commit interval) - does the commit interval bound what a restart can recover?"
+STARTING_OFFSETS=committed-earliest
+ENABLE_AUTO_COMMIT=true
+AUTO_COMMIT_INTERVAL_MS=5000
+CHECKPOINTING_MS=0
+BEFORE_COUNT=600
+OUTAGE_COUNT=900
+RATE=5
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-11 13:49:51,438 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:49:51,452 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,984 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-11 13:50:47,988 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,538 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:09:37,539 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:13:19,070 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+```
+
+### Consumer group after the run
+
+```
+Consumer group 'loss-lab' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+loss-lab        events          0          619             619             0               -               -               -
+loss-lab        events          1          594             594             0               -               -               -
+loss-lab        events          2          587             587             0               -               -               -
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S02L",
   "tables": {
     "t_a": {
       "expected": 897,

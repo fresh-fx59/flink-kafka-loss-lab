@@ -36,6 +36,16 @@ Each scenario carries a written **prediction**. A run where the observation disa
 with the prediction is the most valuable result the lab can produce, and is recorded
 as such.
 
+## Recovery guides
+
+- [Recovery methods and ClickHouse connector audits](docs/kafka-flink-recovery-methods-comparison.md)
+- [Kafka and Flink recovery settings](docs/kafka-flink-recovery-settings.md)
+- [Recovery without checkpoints](docs/kafka-flink-without-checkpoints.md)
+
+These guides include the 2026-09-14 evidence corrections. Graceful-cancel results
+are not crash guarantees; S02K/S21N stopped during setup and have no verdicts.
+ClickHouse connector findings are source audits, not lab crash-test results.
+
 ## Quick start
 
 ```bash

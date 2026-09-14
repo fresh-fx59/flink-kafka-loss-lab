@@ -30,6 +30,10 @@ OUTAGE_TIMESTAMP_SHIFT_MS=0
 OFFSETS_RETENTION_MINUTES=""
 OUTAGE_SLEEP_SECONDS=0
 SINK_FAIL_TABLE=t_b
+# cancel = graceful (Flink closes the sink and drains the pipeline, which HIDES the
+# loss/duplicate window that auto-commit really has). hard = SIGKILL the TaskManager,
+# which is what a crashed job actually does.
+KILL_MODE=cancel
 GROUP_ID=loss-lab
 ENABLE_AUTO_COMMIT=false
 AUTO_COMMIT_INTERVAL_MS=5000
@@ -221,7 +225,13 @@ wait_for_running
 wait_for_rows_stable
 echo "rows after phase 2: t_a=$(pgexec 'SELECT count(*) FROM t_a') t_b=$(pgexec 'SELECT count(*) FROM t_b')"
 
-say "phase 3 — KILL the job (this is the outage)"
+say "phase 3 — KILL the job (this is the outage, mode: $KILL_MODE)"
+if [ "$KILL_MODE" = "hard" ]; then
+  $RUNNER kill -s KILL lab-taskmanager >/dev/null 2>&1 || true
+  sleep 5
+  $RUNNER start lab-taskmanager >/dev/null 2>&1 || true
+  require_taskmanager
+fi
 OUTAGE_START_MS=$(( $(date +%s) * 1000 ))
 echo "outage starts at epoch ms $OUTAGE_START_MS"
 cancel_job

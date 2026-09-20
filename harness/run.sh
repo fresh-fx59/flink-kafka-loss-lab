@@ -30,6 +30,7 @@ OUTAGE_TIMESTAMP_SHIFT_MS=0
 OFFSETS_RETENTION_MINUTES=""
 OUTAGE_SLEEP_SECONDS=0
 SINK_FAIL_TABLE=t_b
+SINK_POISON_EVERY_N=10
 # cancel = graceful (Flink closes the sink and drains the pipeline, which HIDES the
 # loss/duplicate window that auto-commit really has). hard = SIGKILL the TaskManager,
 # which is what a crashed job actually does.
@@ -86,6 +87,7 @@ job_env_args() {
 -e SINK_FAILURE_MODE=$SINK_FAILURE_MODE
 -e WRITE_PROGRESS=$WRITE_PROGRESS
 -e SINK_FAIL_TABLE=$SINK_FAIL_TABLE
+-e SINK_POISON_EVERY_N=$SINK_POISON_EVERY_N
 -e KAFKA_SINK_GUARANTEE=$KAFKA_SINK_GUARANTEE
 -e PARALLELISM=$PARALLELISM
 -e TOPIC1=$TOPIC1

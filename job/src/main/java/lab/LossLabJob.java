@@ -214,7 +214,8 @@ public class LossLabJob {
                     Integer.parseInt(env("SINK_QUEUE_CAPACITY", "50")),
                     envBool("WRITE_PROGRESS", false),
                     env("JOB_NAME", "loss-lab"),
-                    env("SINK_FAIL_TABLE", "t_b"));
+                    env("SINK_FAIL_TABLE", "t_b"),
+                    Integer.parseInt(env("SINK_POISON_EVERY_N", "10")));
             stream.addSink(sink).name("pg-sink-" + mode);
             LOG.info("{} shape -> Postgres, sinkMode={} failureMode={} window={} (now={})",
                     shape, env("SINK_MODE", "plain-insert"), mode, window, now);

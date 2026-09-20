@@ -39,7 +39,17 @@ public class PgSink extends RichSinkFunction<Event> {
     public enum FailureMode {
         NONE, SWALLOW, FAIL_TASK, DROP_ON_FULL, ACK_BEFORE_COMMIT,
         /** Silently starve ONE table so the branches diverge - the fan-out case. */
-        FAIL_ONE_TABLE
+        FAIL_ONE_TABLE,
+        /**
+         * Per-ROW skip. The row that errors is dropped and the rest of the batch is
+         * written. This is what the operator's production ClickHouse sink does, and it
+         * is a different shape of loss from SWALLOW: the batch is not lost, only the
+         * offending rows, so throughput, lag and row counts all look healthy while
+         * individual events disappear permanently. Offsets advance past them and no
+         * restart can ever bring them back - re-reading feeds the same rows to the same
+         * skip.
+         */
+        SKIP_BAD_ROW
     }
 
     private final String jdbcUrl;
@@ -55,6 +65,7 @@ public class PgSink extends RichSinkFunction<Event> {
     private final String jobName;
     private final long flushIntervalMs = 1000L;
     private String failTable = "";
+    private int poisonEveryN = 10;
 
     private transient Connection conn;
     private transient List<Event> buffer;
@@ -62,13 +73,15 @@ public class PgSink extends RichSinkFunction<Event> {
     private transient long droppedCount;
     private transient long lastFlushMs;
     private transient long swallowedCount;
+    private transient long skippedRowCount;
 
     public PgSink(String jdbcUrl, String user, String password,
                   boolean onConflictIgnore, int batchSize,
                   FailureMode failureMode, long failFromMs, long failToMs,
                   int queueCapacity, boolean writeProgress, String jobName,
-                  String failTable) {
+                  String failTable, int poisonEveryN) {
         this.failTable = failTable == null ? "" : failTable;
+        this.poisonEveryN = poisonEveryN;
         this.jdbcUrl = jdbcUrl;
         this.user = user;
         this.password = password;
@@ -102,6 +115,7 @@ public class PgSink extends RichSinkFunction<Event> {
         boundedQueue = new ArrayDeque<>(queueCapacity);
         droppedCount = 0;
         swallowedCount = 0;
+        skippedRowCount = 0;
         lastFlushMs = System.currentTimeMillis();
         LOG.info("PgSink open: mode={} onConflictIgnore={} batchSize={} window={}..{}",
                 failureMode, onConflictIgnore, batchSize, failFromMs, failToMs);
@@ -173,6 +187,10 @@ public class PgSink extends RichSinkFunction<Event> {
     }
 
     private void writeBatch(List<Event> batch) throws Exception {
+        if (failureMode == FailureMode.SKIP_BAD_ROW && inFailureWindow()) {
+            writeBatchSkippingBadRows(batch);
+            return;
+        }
         for (Event e : batch) {
             String table = e.targetTable();
             if (table == null) continue;
@@ -225,6 +243,55 @@ public class PgSink extends RichSinkFunction<Event> {
         }
     }
 
+    /**
+     * Write each row individually and drop the ones that fail. Postgres aborts the whole
+     * transaction on any error, so each row needs its own savepoint - the equivalent of
+     * a sink that catches per row and carries on. The loss is silent and permanent.
+     */
+    private void writeBatchSkippingBadRows(List<Event> batch) throws Exception {
+        for (Event e : batch) {
+            String table = e.targetTable();
+            if (table == null) continue;
+            java.sql.Savepoint sp = conn.setSavepoint();
+            try {
+                if (isPoison(e)) {
+                    // Stand-in for a real ClickHouse per-row rejection: a bad value, a
+                    // type mismatch, a too-long string. The mechanism under test is the
+                    // sink's REACTION, not the cause.
+                    throw new java.sql.SQLException(
+                            "simulated per-row rejection for event_id=" + e.eventId);
+                }
+                String sql = "INSERT INTO " + table
+                        + " (event_id, produced_at, route, src_topic, src_part, src_offset)"
+                        + " VALUES (?,?,?,?,?,?)"
+                        + (onConflictIgnore ? " ON CONFLICT (event_id) DO NOTHING" : "");
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setLong(1, e.eventId);
+                    ps.setLong(2, e.producedAt);
+                    ps.setString(3, e.route);
+                    ps.setString(4, e.srcTopic);
+                    ps.setInt(5, e.srcPartition);
+                    ps.setLong(6, e.srcOffset);
+                    ps.executeUpdate();
+                }
+                conn.releaseSavepoint(sp);
+            } catch (Exception ex) {
+                conn.rollback(sp);
+                skippedRowCount++;
+                if (skippedRowCount % 50 == 1) {
+                    LOG.error("SKIP_BAD_ROW: dropped event_id={} ({} rows skipped so far). "
+                            + "The batch still commits, lag stays at zero, and these rows "
+                            + "are gone for good.", e.eventId, skippedRowCount);
+                }
+            }
+        }
+    }
+
+    /** Every Nth event is unwritable, simulating rows ClickHouse rejects. */
+    private boolean isPoison(Event e) {
+        return poisonEveryN > 0 && (e.eventId % poisonEveryN == 0);
+    }
+
     private void safeRollback() {
         try {
             if (conn != null && !conn.isClosed()) conn.rollback();
@@ -245,6 +312,7 @@ public class PgSink extends RichSinkFunction<Event> {
         } finally {
             if (conn != null && !conn.isClosed()) conn.close();
         }
-        LOG.info("PgSink closed: swallowed={} dropped={}", swallowedCount, droppedCount);
+        LOG.info("PgSink closed: swallowed={} dropped={} skippedRows={}",
+                swallowedCount, droppedCount, skippedRowCount);
     }
 }

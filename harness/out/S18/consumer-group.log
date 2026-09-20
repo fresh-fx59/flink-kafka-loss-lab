@@ -1,0 +1,20 @@
+--- kafka1 group S18-router
+
+Consumer group 'S18-router' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S18-router      events          0          619             619             0               -               -               -
+S18-router      events          1          594             594             0               -               -               -
+S18-router      events          2          587             587             0               -               -               -
+--- kafka2 group S18-sink
+
+Consumer group 'S18-sink' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S18-sink        events-routed   0          619             619             0               -               -               -
+S18-sink        events-routed   1          594             594             0               -               -               -
+S18-sink        events-routed   2          587             587             0               -               -               -
+--- how many records actually reached kafka2
+events-routed:0:619
+events-routed:1:594
+events-routed:2:587

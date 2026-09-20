@@ -1,0 +1,10 @@
+--- kafka1 group S19-router
+
+Error: Consumer group 'S19-router' does not exist.
+--- kafka2 group S19-sink
+
+Error: Consumer group 'S19-sink' does not exist.
+--- how many records actually reached kafka2
+events-routed:0:848
+events-routed:1:771
+events-routed:2:781

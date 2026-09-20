@@ -21,12 +21,19 @@ a lab that cannot reproduce the bug proves nothing about the fix.
 | S04 | 900 | **900** | 0 | 600 | 0 | loss | PASS |
 | S05 | 900 | **900** | 0 | 0 | 398 | no-loss | PASS |
 | S06 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S07 | — | — | — | — | no-loss | **not run** | — |
 | S08 | 900 | **0** | 900 | 1776 | 0 | loss | PASS |
 | S09 | 900 | **900** | 0 | 0 | 600 | no-loss | PASS |
 | S10 | 900 | **0** | 900 | 1775 | 0 | loss | PASS |
 | S11 | 900 | **900** | 0 | 100 | 0 | loss | PASS |
+| S12 | 900 | **450** | 450 | 897 | 0 | loss | PASS |
+| S13 | 900 | **450** | 450 | 894 | 0 | no-loss | **FAIL** |
 | S14 | 900 | **900** | 0 | 0 | 600 | no-loss | PASS |
 | S15 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S17 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S18 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
+| S19 | 900 | **900** | 0 | 0 | 0 | loss | **FAIL** |
+| S20 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
 | S21 | 900 | **900** | 0 | 0 | 0 | no-loss | PASS |
 | S22 | 900 | **0** | 900 | 900 | 0 | loss | PASS |
 
@@ -980,6 +987,12 @@ loss-lab        events          2          587             587             0    
 
 ---
 
+## S07 — not run yet
+
+committed offsets EXPIRE while the group is empty: broker offsets.retention.minutes=1 and an outage held open for 3 minutes. Does expiry cause a replay (safe) or a skip (loss)?
+
+---
+
 ## S08
 
 the suspected production bug: the source reads the whole backlog and the sink SWALLOWS the failure - offsets advance, rows never land, nothing turns red
@@ -1625,6 +1638,280 @@ First missing event ids — `t_a`: [512, 514, 524, 534, 540, 546, 548, 552, 554,
 
 ---
 
+## S12
+
+fan-out done wrong: one table is starved so the branches diverge, then the job resumes from MAX(src_offset) of the LEADING table - the laggard's tail is lost forever
+
+### Case definition (`harness/scenarios/S12.env`, verbatim)
+
+```ini
+DESCRIPTION="fan-out done wrong: one table is starved so the branches diverge, then the job resumes from MAX(src_offset) of the LEADING table - the laggard's tail is lost forever"
+STARTING_OFFSETS=earliest
+RESTART_STARTING_OFFSETS=pg-max:t_a
+ENABLE_AUTO_COMMIT=false
+CHECKPOINTING_MS=0
+SINK_FAILURE_MODE=fail-one-table
+SINK_FAIL_TABLE=t_b
+SINK_FAIL_SECONDS=40
+WRITE_PROGRESS=true
+EXPECT=loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:36:42,582 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:42,588 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,031 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,034 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:45,874 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:45,887 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,875 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,878 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -92233
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+Error: Consumer group 'loss-lab' does not exist.
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 3 | 3 | 897 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 450 saved, 450 lost.**
+
+First missing event ids — `t_b`: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S12",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 897,
+      "missing_sample": [
+        1,
+        3,
+        5,
+        7,
+        9,
+        11,
+        13,
+        15,
+        17,
+        19,
+        21,
+        23,
+        25,
+        27,
+        29,
+        31,
+        33,
+        35,
+        37,
+        39
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 450,
+    "lost": 450
+  },
+  "pass": true
+}
+```
+
+---
+
+## S13
+
+fan-out done right: the same starvation, but the resume point is MIN over every branch's acknowledged progress - bounded replay, nothing lost
+
+### Case definition (`harness/scenarios/S13.env`, verbatim)
+
+```ini
+DESCRIPTION="fan-out done right: the same starvation, but the resume point is MIN over every branch's acknowledged progress - bounded replay, nothing lost"
+STARTING_OFFSETS=earliest
+RESTART_STARTING_OFFSETS=pg-frontier
+ENABLE_AUTO_COMMIT=false
+CHECKPOINTING_MS=0
+SINK_FAILURE_MODE=fail-one-table
+SINK_FAIL_TABLE=t_b
+SINK_FAIL_SECONDS=40
+WRITE_PROGRESS=true
+SINK_MODE=on-conflict-ignore
+PK_ON_EVENT_ID=true
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:43:58,607 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:58,608 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:58:35,707 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:58:35,707 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:59:26,924 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: 177, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:59:26,925 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: 194, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: 228, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:01:22,128 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:01:22,138 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.lambda$removeEmptySplits$4(KafkaPartitionSplitReader.java:352)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.retryOnWakeup(KafkaPartitionSplitReader.java:453)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.removeEmptySplits(KafkaPartitionSplitReader.java:351)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.handleSplitsChanges(KafkaPartitionSplitRea
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+Error: Consumer group 'loss-lab' does not exist.
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 6 | 6 | 894 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 450 saved, 450 lost.**
+
+First missing event ids — `t_b`: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S13",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 6,
+      "rows": 6,
+      "missing_count": 894,
+      "missing_sample": [
+        1,
+        3,
+        5,
+        7,
+        9,
+        11,
+        13,
+        15,
+        17,
+        19,
+        21,
+        23,
+        25,
+        27,
+        29,
+        31,
+        33,
+        35,
+        37,
+        39
+      ],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 450,
+    "lost": 450
+  },
+  "pass": false
+}
+```
+
+---
+
 ## S14
 
 idempotency baseline: replay with plain INSERT -> duplicate rows land
@@ -1836,6 +2123,511 @@ Error: Consumer group 'loss-lab' does not exist.
 ```json
 {
   "scenario": "S15",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S17
+
+two-hop: kill only the SINK job (kafka2 -> Postgres). kafka2 buffers, so the sink's own offset config alone decides whether the gap is re-read - the router's state is irrelevant to it
+
+### Case definition (`harness/scenarios/S17.env`, verbatim)
+
+```ini
+DESCRIPTION="two-hop: kill only the SINK job (kafka2 -> Postgres). kafka2 buffers, so the sink's own offset config alone decides whether the gap is re-read - the router's state is irrelevant to it"
+KILL_JOB=sink
+KAFKA_SINK_GUARANTEE=AT_LEAST_ONCE
+ROUTER_CHECKPOINTING_MS=10000
+SINK_CHECKPOINTING_MS=0
+ENABLE_AUTO_COMMIT=true
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:18:57,896 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:18:57,897 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:19:49,744 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: 499, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:19:49,749 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: 520, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: 481, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:32:50,794 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:32:50,794 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:33:06,357 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:33:06,357 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:34:06,725 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:34:06,726 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -92
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+--- kafka1 group S17-router
+
+Consumer group 'S17-router' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S17-router      events          0          619             619             0               -               -               -
+S17-router      events          1          594             594             0               -               -               -
+S17-router      events          2          587             587             0               -               -               -
+--- kafka2 group S17-sink
+
+Consumer group 'S17-sink' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S17-sink        events-routed   0          619             619             0               -               -               -
+S17-sink        events-routed   1          594             594             0               -               -               -
+S17-sink        events-routed   2          587             587             0               -               -               -
+--- how many records actually reached kafka2
+events-routed:0:619
+events-routed:1:594
+events-routed:2:587
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S17",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S18
+
+two-hop: kill only the ROUTER job. kafka1 buffers; the sink looks perfectly healthy on kafka2 while the data simply is not there yet
+
+### Case definition (`harness/scenarios/S18.env`, verbatim)
+
+```ini
+DESCRIPTION="two-hop: kill only the ROUTER job. kafka1 buffers; the sink looks perfectly healthy on kafka2 while the data simply is not there yet"
+KILL_JOB=router
+KAFKA_SINK_GUARANTEE=AT_LEAST_ONCE
+ROUTER_CHECKPOINTING_MS=10000
+SINK_CHECKPOINTING_MS=0
+ENABLE_AUTO_COMMIT=true
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:33:06,357 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:33:06,357 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:34:06,725 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:34:06,726 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:27,259 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:27,259 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:42,582 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:42,588 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,031 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,034 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, S
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+--- kafka1 group S18-router
+
+Consumer group 'S18-router' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S18-router      events          0          619             619             0               -               -               -
+S18-router      events          1          594             594             0               -               -               -
+S18-router      events          2          587             587             0               -               -               -
+--- kafka2 group S18-sink
+
+Consumer group 'S18-sink' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S18-sink        events-routed   0          619             619             0               -               -               -
+S18-sink        events-routed   1          594             594             0               -               -               -
+S18-sink        events-routed   2          587             587             0               -               -               -
+--- how many records actually reached kafka2
+events-routed:0:619
+events-routed:1:594
+events-routed:2:587
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S18",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": true
+}
+```
+
+---
+
+## S19
+
+the uncheckpointed router is itself a loss point: DeliveryGuarantee.NONE, no checkpoints, killed mid-stream - records die at the router's Kafka sink even though both clusters are healthy
+
+### Case definition (`harness/scenarios/S19.env`, verbatim)
+
+```ini
+DESCRIPTION="the uncheckpointed router is itself a loss point: DeliveryGuarantee.NONE, no checkpoints, killed mid-stream - records die at the router's Kafka sink even though both clusters are healthy"
+KILL_JOB=router
+KAFKA_SINK_GUARANTEE=NONE
+ROUTER_CHECKPOINTING_MS=0
+SINK_CHECKPOINTING_MS=0
+ENABLE_AUTO_COMMIT=false
+EXPECT=loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:36:42,582 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:36:42,588 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,031 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:37:41,034 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:45,874 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:45,887 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,875 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,878 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -92233
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+--- kafka1 group S19-router
+
+Error: Consumer group 'S19-router' does not exist.
+--- kafka2 group S19-sink
+
+Error: Consumer group 'S19-sink' does not exist.
+--- how many records actually reached kafka2
+events-routed:0:848
+events-routed:1:771
+events-routed:2:781
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S19",
+  "tables": {
+    "t_a": {
+      "expected": 897,
+      "actual_distinct": 897,
+      "rows": 897,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_b": {
+      "expected": 900,
+      "actual_distinct": 900,
+      "rows": 900,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    },
+    "t_rare": {
+      "expected": 3,
+      "actual_distinct": 3,
+      "rows": 3,
+      "missing_count": 0,
+      "missing_sample": [],
+      "extra_count": 0,
+      "extra_sample": [],
+      "duplicate_count": 0,
+      "duplicate_sample": []
+    }
+  },
+  "outage": {
+    "produced": 900,
+    "saved": 900,
+    "lost": 0
+  },
+  "pass": false
+}
+```
+
+---
+
+## S20
+
+the router done right: checkpoints on plus DeliveryGuarantee.AT_LEAST_ONCE; duplicates into kafka2 are absorbed downstream by the unique index
+
+### Case definition (`harness/scenarios/S20.env`, verbatim)
+
+```ini
+DESCRIPTION="the router done right: checkpoints on plus DeliveryGuarantee.AT_LEAST_ONCE; duplicates into kafka2 are absorbed downstream by the unique index"
+KILL_JOB=router
+KAFKA_SINK_GUARANTEE=AT_LEAST_ONCE
+ROUTER_CHECKPOINTING_MS=10000
+SINK_CHECKPOINTING_MS=10000
+ENABLE_AUTO_COMMIT=false
+SINK_MODE=on-conflict-ignore
+PK_ON_EVENT_ID=true
+UNIQUE_REQUIRED=true
+EXPECT=no-loss
+```
+
+### Initial data produced
+
+| phase | events | event_id range |
+|---|---|---|
+| before-outage | 600 | 1–600 |
+| during-outage | 900 | 601–1500 |
+| after-restart | 300 | 1501–1800 |
+
+Route split: `a`=897, `b`=900, `rare`=3
+
+### Where the restarted source actually began
+
+```
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:39:59,137 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,875 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:40:54,878 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:42:56,949 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:42:56,951 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:10,686 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-2, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-routed-0, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:10,686 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-routed-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:58,607 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:58,608 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -92233
+... (truncated)
+```
+
+### Consumer group after the run
+
+```
+--- kafka1 group S20-router
+
+Consumer group 'S20-router' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S20-router      events          0          619             619             0               -               -               -
+S20-router      events          1          594             594             0               -               -               -
+S20-router      events          2          587             587             0               -               -               -
+--- kafka2 group S20-sink
+
+Consumer group 'S20-sink' has no active members.
+
+GROUP           TOPIC           PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+S20-sink        events-routed   0          619             619             0               -               -               -
+S20-sink        events-routed   1          594             594             0               -               -               -
+S20-sink        events-routed   2          587             587             0               -               -               -
+--- how many records actually reached kafka2
+events-routed:0:619
+events-routed:1:594
+events-routed:2:587
+```
+
+### Output — per destination table
+
+| table | expected | distinct saved | rows | missing | duplicates | extra |
+|---|---|---|---|---|---|---|
+| `t_a` | 897 | 897 | 897 | 0 | 0 | 0 |
+| `t_b` | 900 | 900 | 900 | 0 | 0 | 0 |
+| `t_rare` | 3 | 3 | 3 | 0 | 0 | 0 |
+
+**Outage window: 900 produced, 900 saved, 0 lost.**
+
+### Raw verdict
+
+```json
+{
+  "scenario": "S20",
   "tables": {
     "t_a": {
       "expected": 897,

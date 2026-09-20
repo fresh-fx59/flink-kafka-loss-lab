@@ -1,0 +1,14 @@
+TRUNCATE TABLE
+Error: can only create exec sessions on running containers: container state improper
+Error while executing topic command : Topic 'events-routed' does not exist as expected
+[2026-09-14 07:15:53,151] ERROR java.lang.IllegalArgumentException: Topic 'events-routed' does not exist as expected
+	at kafka.admin.TopicCommand$.kafka$admin$TopicCommand$$ensureTopicExists(TopicCommand.scala:400)
+	at kafka.admin.TopicCommand$TopicService.deleteTopic(TopicCommand.scala:360)
+	at kafka.admin.TopicCommand$.main(TopicCommand.scala:65)
+	at kafka.admin.TopicCommand.main(TopicCommand.scala)
+ (kafka.admin.TopicCommand$)
+Error: can only create exec sessions on running containers: container state improper
+
+Error: Deletion of some consumer groups failed:
+* Group 'S19H-router' could not be deleted due to: java.util.concurrent.ExecutionException: org.apache.kafka.common.errors.GroupIdNotFoundException: The group id does not exist.
+Error: can only create exec sessions on running containers: container state improper

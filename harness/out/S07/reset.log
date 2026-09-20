@@ -1,0 +1,7 @@
+TRUNCATE TABLE
+Error: can only create exec sessions on running containers: container state improper
+Error: can only create exec sessions on running containers: container state improper
+
+Error: Deletion of some consumer groups failed:
+* Group 'loss-lab' could not be deleted due to: java.util.concurrent.ExecutionException: org.apache.kafka.common.errors.GroupIdNotFoundException: The group id does not exist.
+Error: can only create exec sessions on running containers: container state improper

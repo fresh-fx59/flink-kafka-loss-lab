@@ -1,0 +1,17 @@
+lab-kafka1-3
+lab-kafka1-2
+time="2026-09-14T07:14:46Z" level=warning msg="StopSignal SIGTERM failed to stop container lab-kafka1-1 in 10 seconds, resorting to SIGKILL"
+lab-kafka1-1
+lab-zookeeper
+lab-kafka1-3
+lab-kafka1-2
+lab-kafka1-1
+Error: container cfdb1e510797412ed7f0fe8fbfc6911bbac75e6689cfb5b60f36e3c6453c894f has dependent containers which must be removed before it: a32e07ed055bd215c325d3c0fd3f4f8b48619c26490f52251725f2516ee78231, 07a83c47d58b7ad67e662e184522247434a3b43b8a6c9ff0b0491a24f861b1cf: container already exists
+Error: creating container storage: the container name "lab-zookeeper" is already in use by cfdb1e510797412ed7f0fe8fbfc6911bbac75e6689cfb5b60f36e3c6453c894f. You have to remove that container to be able to reuse that name: that name is already in use, or use --replace to instruct Podman to do so.
+cbfac96373a7860550a294716971ea1f847f9ab4a4a516873c4ad533ee8b3c47
+9e93be0afb4c2dee9f3659732e661484f06374d4eed4a2277d1156bb7bdf3fdb
+979ed2aeb96c81137ad5256bf1145bf7361a54c2ffe639826f9299e83b1cc1b6
+lab-zookeeper
+lab-kafka1-1
+lab-kafka1-2
+lab-kafka1-3

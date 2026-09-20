@@ -1,0 +1,20 @@
+2026-09-14 06:43:58,607 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:43:58,608 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: -3, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: -3, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:58:35,707 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:58:35,707 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:59:26,924 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: 177, StoppingOffset: -9223372036854775808]]
+2026-09-14 06:59:26,925 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: 194, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: 228, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:01:22,128 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:01:22,138 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.lambda$removeEmptySplits$4(KafkaPartitionSplitReader.java:352)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.retryOnWakeup(KafkaPartitionSplitReader.java:453)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.removeEmptySplits(KafkaPartitionSplitReader.java:351)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.handleSplitsChanges(KafkaPartitionSplitReader.java:215)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.lambda$removeEmptySplits$4(KafkaPartitionSplitReader.java:352)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.retryOnWakeup(KafkaPartitionSplitReader.java:453)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.removeEmptySplits(KafkaPartitionSplitReader.java:351)
+	at org.apache.flink.connector.kafka.source.reader.KafkaPartitionSplitReader.handleSplitsChanges(KafkaPartitionSplitReader.java:215)
+2026-09-14 07:12:49,523 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-2, StartingOffset: -2, StoppingOffset: -9223372036854775808], [Partition: events-0, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:12:49,524 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: -2, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:13:37,122 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-0, StartingOffset: 195, StoppingOffset: -9223372036854775808], [Partition: events-2, StartingOffset: 194, StoppingOffset: -9223372036854775808]]
+2026-09-14 07:13:37,119 INFO  org.apache.flink.connector.base.source.reader.SourceReaderBase [] - Adding split(s) to reader: [[Partition: events-1, StartingOffset: 177, StoppingOffset: -9223372036854775808]]

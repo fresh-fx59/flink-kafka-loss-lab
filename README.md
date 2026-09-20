@@ -77,7 +77,9 @@ starting offsets and the consumer-group state saved alongside.
 | S14 | Replay with plain `INSERT` | Duplicates land |
 | S15 | Replay with a unique index + `ON CONFLICT DO NOTHING` | Exact row set after replay |
 
-Observed results: [`RESULTS.md`](RESULTS.md).
+Observed results: [`RESULTS.md`](RESULTS.md) — 20 scenarios run, 18 matching their
+prediction and **2 refuting it** (S13 and S19). What all of it establishes, including
+what was never measured: [`docs/FINDINGS.md`](docs/FINDINGS.md).
 
 ## Why Flink 1.17.0 on Java 17 needs a custom image
 

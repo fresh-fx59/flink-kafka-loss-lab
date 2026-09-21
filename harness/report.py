@@ -13,9 +13,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "harness", "out")
 SCEN = os.path.join(ROOT, "harness", "scenarios")
 
-ORDER = ["S01", "S02", "S02L", "S03", "S04", "S05", "S06", "S07", "S08", "S09",
+ORDER = ["S01", "S02", "S02K", "S02L", "S03", "S04", "S05", "S06", "S07", "S08", "S09",
          "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18",
-         "S19", "S20", "S21", "S22"]
+         "S19", "S19H", "S20", "S21", "S21N", "S22", "S23", "S24"]
 
 
 def read(path, limit=None):

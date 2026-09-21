@@ -34,6 +34,19 @@ open for three minutes against a five-second interval and still recovered every 
 The interval governs how often the bookmark is written *while the job runs*; the Kafka
 log is what makes the data recoverable afterwards.
 
+**But auto-commit's zero-loss result only holds for a GRACEFUL stop.** S02 and S02L both
+ended with `flink cancel`, which drains the pipeline. **S02K** repeats S02 with the
+TaskManager SIGKILLed instead, and it **lost 98 events** — records the consumer had
+fetched and committed but the sink had not yet written. That is the real auto-commit
+window, and it is exactly what the mechanism predicts: the commit records the consumer's
+*fetch position*, which runs ahead of the source's emitted position, which runs ahead of
+the sink's flushed position. S02K is recorded as a **FAIL** because it was written
+expecting no loss.
+
+Read S02 as *"no loss on a clean stop"*, and S02K as *"up to one commit interval of loss
+on a crash"*. Neither is a durability guarantee; see
+[two-durable-progress-records.md](two-durable-progress-records.md).
+
 ## 2. What loses the outage
 
 | configuration | evidence | saved | note |
@@ -44,6 +57,35 @@ log is what makes the data recoverable afterwards.
 | sink swallows its insert exception | S08 | **0/900** | §3 |
 | sink acknowledges before the commit | S10 | **0/900** | §3 |
 | bounded sink queue drops instead of back-pressuring | S11 | 900/900, 100 missing elsewhere | §3 |
+
+## 2b. Per-row skip — the failure mode that no offset strategy can fix
+
+The operator's production ClickHouse sink drops **only the offending row** and commits
+the rest of the batch, logging the event id. That is a different shape of loss from a
+whole-batch swallow, and a worse one operationally.
+
+Modelled as `SKIP_BAD_ROW` (savepoint per row; the failing row is rolled back, the rest
+of the batch commits). Every 10th event during the catch-up window is unwritable.
+
+| | evidence | outage saved | total missing |
+|---|---|---|---|
+| per-row skip, **no checkpoints** | S23 | 810 of 900 | 180 |
+| per-row skip, **checkpoints on + restart from the retained checkpoint** | S24 | **810 of 900** | **180** |
+
+**S23 and S24 are identical.** Checkpoints changed nothing, because a replay feeds the
+same row to the same skip. This is the sharpest boundary in the lab:
+
+> Offset configuration decides only what is **re-read**. It can never recover a row the
+> sink chose to drop.
+
+Why it is worse than S08's whole-batch swallow: batches keep committing, lag stays at
+zero, throughput looks normal, and row counts look plausible. **Nothing turns red.** The
+only trace is a log line, which is the least durable record available (§9, and
+`docs/two-durable-progress-records.md`).
+
+The fix is not an offset setting. It is to make the rejected row *findable*: write it to
+a durable reject table, keyed by `(topic, partition, offset, event_id, reason)`, at the
+moment it is skipped.
 
 ## 3. The sink decides whether recovery is worth anything
 
@@ -134,6 +176,26 @@ branches diverge.
   the sink store" design, and it is the second scenario in this lab that refuted the
   design it was written to endorse.
 
+## 6b. Where the resume point should actually live
+
+Neither Flink nor Kafka can tell you which offset reached the database when
+checkpointing is off:
+
+- **Kafka's committed offsets are the consumer's fetch position** — ahead of the source's
+  emitted position, which is ahead of the sink's flushed position. A ceiling, not the
+  answer. Measured as S02K's 98 lost events.
+- **Flink's `committedOffset` gauge is never set at all** with checkpointing off. It is
+  recorded in exactly one place, `KafkaSourceReader.notifyCheckpointComplete()`, which
+  never fires; it stays at its initial `-1` for the whole run even while
+  `enable.auto.commit=true` is really committing inside the Kafka client.
+
+The offset can be carried to the sink with no schema change — the deserializer receives
+the whole `ConsumerRecord` — and the durable record belongs in a side progress table
+written **after** the ack, with a contiguity guard. Full detail, including why a log line
+must not be the record of truth:
+[finding-the-last-written-offset.md](finding-the-last-written-offset.md) and
+[two-durable-progress-records.md](two-durable-progress-records.md).
+
 ## 7. Hard limits nothing can beat
 
 - Topic `retention.ms`. An offset cannot address a deleted record. Recovery is bounded
@@ -152,16 +214,12 @@ branches diverge.
   XA support and `max_prepared_transactions > 0`; ClickHouse has neither, so the result
   could not inform the target deployment.
 - **S19H** — the honest re-run of S19 (hard kill, auto-commit on). Not run.
-- **S02K** — does auto-commit really produce neither loss nor duplicates, or did the
-  graceful `flink cancel` hide the window? **Not run**, and this matters: S02's and
-  S02L's zero-duplicate results were both obtained with a *graceful* shutdown, which
-  drains the pipeline. Auto-commit commits the **fetcher's** position, which normally
-  sits ahead of what the sink wrote, so a crash is expected to **lose** up to one commit
-  interval. Treat S02's "0 duplicates, 0 lost" as *"true for a graceful stop"* and not
-  as a general guarantee.
 - **S21N** — how many duplicates `timestamp()` produces with no deduplication. Not run.
   S21's zero-duplicate figure was obtained with a unique index absorbing them, so it is
   not a measurement of the strategy itself.
+
+(**S02K was run** — see §1. It lost 98 events on a hard kill and is recorded as a FAIL
+against its own no-loss prediction.)
 
 ## 9. Lab bugs worth knowing about
 

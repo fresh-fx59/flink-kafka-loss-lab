@@ -8,12 +8,12 @@ Error: Deletion of some consumer groups failed:
 Created topic events.
 Created topic events-routed.
 --- kafka1 ---
-Topic: events	TopicId: gGrXfQtpQLOXELKkSsCWhQ	PartitionCount: 3	ReplicationFactor: 3	Configs: min.insync.replicas=2,message.timestamp.type=LogAppendTime
-	Topic: events	Partition: 0	Leader: 11	Replicas: 11,13,12	Isr: 11,13,12
-	Topic: events	Partition: 1	Leader: 13	Replicas: 13,12,11	Isr: 13,12,11
-	Topic: events	Partition: 2	Leader: 12	Replicas: 12,11,13	Isr: 12,11,13
+Topic: events	TopicId: OGNOu1QjSCiO-om9MMiw5A	PartitionCount: 3	ReplicationFactor: 3	Configs: min.insync.replicas=2,message.timestamp.type=LogAppendTime
+	Topic: events	Partition: 0	Leader: 11	Replicas: 11,12,13	Isr: 11,12,13
+	Topic: events	Partition: 1	Leader: 13	Replicas: 13,11,12	Isr: 13,11,12
+	Topic: events	Partition: 2	Leader: 12	Replicas: 12,13,11	Isr: 12,13,11
 --- kafka2 ---
-Topic: events-routed	TopicId: Rpc1f2cBQaKYsBVipBLpbA	PartitionCount: 3	ReplicationFactor: 2	Configs: min.insync.replicas=1,message.timestamp.type=LogAppendTime
+Topic: events-routed	TopicId: 1VaMEGA3SgSQnEU-VuMoWw	PartitionCount: 3	ReplicationFactor: 2	Configs: min.insync.replicas=1,message.timestamp.type=LogAppendTime
 	Topic: events-routed	Partition: 0	Leader: 22	Replicas: 22,21	Isr: 22,21
 	Topic: events-routed	Partition: 1	Leader: 21	Replicas: 21,22	Isr: 21,22
 	Topic: events-routed	Partition: 2	Leader: 22	Replicas: 22,21	Isr: 22,21

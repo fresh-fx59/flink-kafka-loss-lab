@@ -14,12 +14,10 @@ podman run --rm --cgroup-parent="$SLICE" \
 ls -la "$PWD"/job/target/*.jar
 
 echo "== 2. build images + start the stack"
-# podman-compose puts every container in a POD, and the pod's cgroup wins over any
-# per-container --cgroup-parent. The cap has to be set on the pod.
-nix run nixpkgs#podman-compose -- \
-  --podman-pod-args="--cgroup-parent=$SLICE" \
-  --podman-run-args="--cgroup-parent=$SLICE" \
-  up -d --build
+# Not passing --podman-pod-args here: podman always parents the pod under
+# machine.slice anyway, and newer podman-compose rejects the flag outright. Step 6
+# applies the cap to the pod's REAL cgroup and refuses to continue if it missed.
+nix run nixpkgs#podman-compose -- up -d --build
 
 echo "== 3. wait for brokers"
 sleep 45

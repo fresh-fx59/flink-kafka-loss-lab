@@ -1,5 +1,7 @@
 # What to do, in order
 
+> How to implement it, phase by phase: [`IMPLEMENTATION-GUIDE.md`](IMPLEMENTATION-GUIDE.md).
+
 Written for one specific production setup: **Flink 1.17.0 / Java 17, Kafka in ZooKeeper
 mode, a custom ClickHouse sink that skips individual rows it cannot write, checkpointing
 off and staying off.** Two job shapes: a router (`kafka1 → filter → kafka2`, then
